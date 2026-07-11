@@ -7,7 +7,7 @@ import os
 dataset = load_dataset("ethz/food101")
 
 # 저장 폴더 생성
-# os.makedirs("preprocessed_samples", exist_ok = True)
+os.makedirs("preprocessed_samples_advanced", exist_ok = True)
 
 def resize_image(image, size = (224, 224)) :
     # 이미지를 지정한 크기로 변경
@@ -53,20 +53,76 @@ def preprocess_for_save(image) :
     image = apply_blur(image)
     return image
 
-# 처음 5장만 처리
-def main() : 
+def calculate_brightness_threshold(dataset, sample_size = 100) :
+    # 이미지들의 평균 밝기를 계산하는 함수
+    brightness_list = []
     for i, sample in enumerate(dataset["train"]):
-        if i>= 5 :
+        if i>= sample_size :
+            break
+        image = np.array(sample["image"])
+        gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+        # 밝기 필터링을 위해 평균 밝기를 계산
+        brightness = np.mean(gray)
+        brightness_list.append(brightness)
+        
+    threshold = np.mean(brightness_list)
+    
+    return threshold
+
+def is_dark_image(image, threshold) :
+    # 평균 밝기가 threshold보다 낮으면 True를 반환
+    
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    brightness = np.mean(gray)
+    return brightness < threshold
+
+def is_small_object(image, foreground_ratio_threshold) :
+    # 전경 비율을 이용하여 객체의 크기가 작은지를 판별
+    
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    blurred = cv2.GaussianBlur(gray, (5,5), 0)
+    
+    _, binary = cv2.threshold(
+        blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+    )
+    
+    foreground_pixels = np.sum(binary == 255)
+    total_pixels = binary.shape[0] * binary.shape[1]
+    
+    foreground_ratio = foreground_pixels / total_pixels
+    
+    print(f"Foreground Ratio : {foreground_ratio:.3f}")
+    
+    return foreground_ratio < foreground_ratio_threshold
+
+
+# 처음 100장만 처리
+def main() :
+    threshold = calculate_brightness_threshold(dataset)
+    print(f"brightness threshold : {threshold : .2f}")
+    
+    removed_d = 0
+    removed_s = 0
+
+    for i, sample in enumerate(dataset["train"]):
+        if i>= 100 :
             break
         # Hugging Face는 PIL(Pillow) 형식으로 이미지를 제공함
         # openCV는 numpy.ndarray를 이용하기 때문에 변환이 필요함
         image = np.array(sample["image"])
     
-        # PIL은 RGB 순서를 이용하지만 openCV는 BGR 순서를 사용함
-        # RGB -> BGR로 변환 필요
         image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-    
+        
+        if is_dark_image(image, threshold) :
+            removed_d += 1
+            continue
+        
+        if is_small_object(image, foreground_ratio_threshold = 0.4) :
+            removed_s += 1
+            continue
+        
         processed_image = preprocess_for_save(image)
+        
         file_name = f"preprocessed_samples/sample_{i+1}.jpg"
         cv2.imwrite(file_name,
                     processed_image)
@@ -74,20 +130,53 @@ def main() :
         print(f"saved : {file_name}")
     
         normalized_image = normalize_image(processed_image)
+    
+    print(f"removed {removed_d} dark images")
+    print(f"removed {removed_s} small object images")
         
-        
+    
 
 if __name__ == "__main__" :
     main()
+    
 
 # # 첫 번째 데이터로 점검하기
 # sample = dataset["train"][0]
 # image = np.array(sample["image"])
-# print(type(sample["image"]))
-# print(type(image))
 
 # image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-# print(image.shape)
+# gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+# blurred = cv2.GaussianBlur(gray, (5,5), 0)
+# _, binary = cv2.threshold(blurred, 0, 255, 
+#                           cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+# contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+# # largest = max(contours, key = cv2.contourArea)
+
+# foreground_pixels = np.sum(binary == 255)
+# total_pixels = binary.shape[0] * binary.shape[1]
+    
+# foreground_ratio = foreground_pixels / total_pixels
+
+# cv2.imwrite("C:/Users/samsung/comento/binary_test.jpg", binary)
+
+# area = cv2.contourArea(largest)
+
+# print(area)
+
+# contour_image = image.copy()
+
+# cv2.drawContours(
+#     contour_image,
+#     [largest],
+#     -1,
+#     (0, 255, 0),
+#     3
+# )
+
+# cv2.imshow("Largest Contour", contour_image)
+# cv2.waitKey(0)
+# cv2.destroyAllWindows()
 
 # cv2.imwrite(
 #     "preprocessed_samples/original.jpg",
