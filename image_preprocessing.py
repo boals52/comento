@@ -7,7 +7,7 @@ import os
 dataset = load_dataset("ethz/food101")
 
 # 저장 폴더 생성
-os.makedirs("preprocessed_samples_advanced", exist_ok = True)
+os.makedirs("preprocessed_samples", exist_ok = True)
 
 def resize_image(image, size = (224, 224)) :
     # 이미지를 지정한 크기로 변경
@@ -138,50 +138,3 @@ def main() :
 
 if __name__ == "__main__" :
     main()
-    
-# ----------Debug Code-----------
-# # 첫 번째 데이터로 점검하기
-# sample = dataset["train"][0]
-# image = np.array(sample["image"])
-
-# image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-# gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-
-# blurred = cv2.GaussianBlur(gray, (5,5), 0)
-# _, binary = cv2.threshold(blurred, 0, 255, 
-#                           cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-# contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-# # largest = max(contours, key = cv2.contourArea)
-
-# foreground_pixels = np.sum(binary == 255)
-# total_pixels = binary.shape[0] * binary.shape[1]
-    
-# foreground_ratio = foreground_pixels / total_pixels
-
-# cv2.imwrite("C:/Users/samsung/comento/binary_test.jpg", binary)
-
-# area = cv2.contourArea(largest)
-
-# print(area)
-
-# contour_image = image.copy()
-
-# cv2.drawContours(
-#     contour_image,
-#     [largest],
-#     -1,
-#     (0, 255, 0),
-#     3
-# )
-
-# cv2.imshow("Largest Contour", contour_image)
-# cv2.waitKey(0)
-# cv2.destroyAllWindows()
-
-# cv2.imwrite(
-#     "preprocessed_samples/original.jpg",
-#     image
-# )
-
-# resized = cv2.resize(image, (224, 224))
-# print(resized.shape)
