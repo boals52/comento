@@ -51,25 +51,6 @@ Food101 데이터셋에는 객체의 Bounding Box가 제공되지 않으므로, 
 
 Foreground Pixel 비율을 객체 크기의 근사값으로 사용하였으며, 전경 비율이 0.4 미만인 이미지를 객체가 작은 이상치로 판단하였습니다.
 
----
-
-## 실행 방법
-
-```bash
-python image_preprocessing.py
-```
-
----
-
-## 프로젝트 구조
-
-```
-comento
-│
-├── image_preprocessing.py
-├── preprocessed_samples/
-└── README.md
-```
 
 ---
 
