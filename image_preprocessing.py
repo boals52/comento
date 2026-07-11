@@ -139,7 +139,7 @@ def main() :
 if __name__ == "__main__" :
     main()
     
-
+# ----------Debug Code-----------
 # # 첫 번째 데이터로 점검하기
 # sample = dataset["train"][0]
 # image = np.array(sample["image"])
