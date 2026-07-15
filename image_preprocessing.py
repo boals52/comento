@@ -7,6 +7,7 @@ import os
 dataset = load_dataset("ethz/food101")
 
 # 저장 폴더 생성
+os.makedirs("samples", exist_ok = True)
 os.makedirs("preprocessed_samples", exist_ok = True)
 
 def resize_image(image, size = (224, 224)) :
@@ -64,10 +65,13 @@ def calculate_brightness_threshold(dataset, sample_size = 100) :
         # 밝기 필터링을 위해 평균 밝기를 계산
         brightness = np.mean(gray)
         brightness_list.append(brightness)
-        
-    threshold = np.mean(brightness_list)
     
-    return threshold
+    mean_brightness = np.mean(brightness_list)
+    std_brightness = np.std(brightness_list)
+    
+    threshold = mean_brightness - std_brightness
+    
+    return mean_brightness, std_brightness, threshold
 
 def is_dark_image(image, threshold) :
     # 평균 밝기가 threshold보다 낮으면 True를 반환
@@ -91,14 +95,14 @@ def is_small_object(image, foreground_ratio_threshold) :
     
     foreground_ratio = foreground_pixels / total_pixels
     
-    print(f"Foreground Ratio : {foreground_ratio:.3f}")
+    # print(f"Foreground Ratio : {foreground_ratio:.3f}")
     
     return foreground_ratio < foreground_ratio_threshold
 
 
 # 처음 100장만 처리
 def main() :
-    threshold = calculate_brightness_threshold(dataset)
+    mean_brightness, std_brightness, threshold = calculate_brightness_threshold(dataset)
     print(f"brightness threshold : {threshold : .2f}")
     
     removed_d = 0
@@ -113,21 +117,25 @@ def main() :
     
         image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
         
+        file_name = f"samples/sample_{i+1}.jpg"
+        cv2.imwrite(file_name,
+                    image)
+        
         if is_dark_image(image, threshold) :
             removed_d += 1
             continue
         
-        if is_small_object(image, foreground_ratio_threshold = 0.4) :
+        if is_small_object(image, foreground_ratio_threshold = 0.3) :
             removed_s += 1
             continue
         
         processed_image = preprocess_for_save(image)
         
-        file_name = f"preprocessed_samples/sample_{i+1}.jpg"
-        cv2.imwrite(file_name,
+        processed_file_name = f"preprocessed_samples/processed_sample_{i+1}.jpg"
+        cv2.imwrite(processed_file_name,
                     processed_image)
         
-        print(f"saved : {file_name}")
+        # print(f"saved : {file_name}")
     
         normalized_image = normalize_image(processed_image)
     
