@@ -106,6 +106,7 @@ def main() :
     # cv2.imwrite("depth_results/depth_map_color.jpg", color_depth_map)
     
     # np.save("depth_results/point_cloud.npy", point_cloud)
+    np.save("depth_results/depth_map.npy", depth_map)
     
     print("Original image shape :", image.shape)
     print("Depth map shape : ", depth_map.shape)
