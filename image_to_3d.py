@@ -8,7 +8,7 @@ from mpl_toolkits.mplot3d import Axes3D
 from datasets import load_dataset
 
 def generate_depth_map(image) :
-    # 입력 이미지를 Grayscale로 변환한 후 컬러맵을 적용하여 
+    # 입력 이미지를 Grayscale로 변환한 후 
     # 밝기 값을 가상의 깊이 값으로 사용한 깊이 맵을 생성
     if image is None :
         raise ValueError("입력된 이미지가 없습니다.")
@@ -100,12 +100,12 @@ def main() :
     # 포인트 클라우드 시각화
     visualize_point_cloud(point_cloud)
     
-    # # 결과 저장
-    # cv2.imwrite("depth_results/original.jpg", image)
-    # cv2.imwrite("depth_results/depth_map_gray.jpg", depth_map)
-    # cv2.imwrite("depth_results/depth_map_color.jpg", color_depth_map)
+    # 결과 저장
+    cv2.imwrite("depth_results/original.jpg", image)
+    cv2.imwrite("depth_results/depth_map_gray.jpg", depth_map)
+    cv2.imwrite("depth_results/depth_map_color.jpg", color_depth_map)
     
-    # np.save("depth_results/point_cloud.npy", point_cloud)
+    np.save("depth_results/point_cloud.npy", point_cloud)
     np.save("depth_results/depth_map.npy", depth_map)
     
     print("Original image shape :", image.shape)

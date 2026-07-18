@@ -66,6 +66,11 @@ def depth_map_to_mesh(
     z_scale : float = 1.0
 ) -> o3d.geometry.TriangleMesh :
     # 깊이 맵의 규칙적인 픽셀 격자를 삼각형으로 연결하여 Height-field 형태의 Mesh를 생성
+    # 입력
+    # depth_map:shape이 (H, W)인 단일 채널 깊이 맵
+    # stride:몇 픽셀마다 하나의 정점을 사용할지 결정
+    # z_scale:깊이값의 시각적 크기를 조절하는 배율
+    
     if depth_map is None :
         raise ValueError("입력된 깊이 맵이 없습니다.")
     if depth_map.ndim != 2 :
@@ -197,19 +202,19 @@ def main() :
     print("Colors shape :", colors.shape)
 
     
-    # # Point Cloud
-    # o3d.visualization.draw_geometries(
-    #     [open3d_point_cloud],
-    #     window_name = "Point Cloud Visualization",
-    #     width = 1000,
-    #     height = 700
-    # )
+    # Point Cloud
+    o3d.visualization.draw_geometries(
+        [open3d_point_cloud],
+        window_name = "Point Cloud Visualization",
+        width = 1000,
+        height = 700
+    )
     
-    # # Voxel Grid
-    # visualize_voxel_grid(
-    #     open3d_point_cloud,
-    #     voxel_size=10.0
-    # )
+    # Voxel Grid
+    visualize_voxel_grid(
+        open3d_point_cloud,
+        voxel_size=10.0
+    )
     
     # Triangle Mesh
     depth_map = np.load(
@@ -218,7 +223,7 @@ def main() :
     
     mesh = depth_map_to_mesh(
         depth_map,
-        stride = 2,
+        stride = 8,
         z_scale = 0.5
     )
     
