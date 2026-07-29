@@ -1,0 +1,1414 @@
+"""Google Colab 노트북에서 변환된 Python 스크립트."""
+
+
+# %% [Code cell 1]
+# 패키지 설치
+!pip install -q ultralytics pyyaml
+
+# %% [Code cell 2]
+import ultralytics
+import cv2
+import torch
+import time
+import pandas as pd
+import shutil
+
+from pathlib import Path
+from ultralytics import YOLO
+
+print("Ultralytics:", ultralytics.__version__)
+print("OpenCV:", cv2.__version__)
+print("PyTorch:", torch.__version__)
+
+# %% [Code cell 3]
+from google.colab import drive
+
+drive.mount("/content/drive")
+
+# %% [Code cell 4]
+drive_clean_root = Path("/content/drive/MyDrive/2026/comento/Traffic-Density-Prediction-9-cleaned")
+
+clean_root = Path(
+    "/content/Traffic-Density-Prediction-9-cleaned"
+)
+
+shutil.copytree(
+    drive_clean_root,
+    clean_root,
+    dirs_exist_ok=True,
+)
+
+# %% [Code cell 5]
+# 경로 상수 정의
+DATASET_ROOT = Path("/content/Traffic-Density-Prediction-9")
+DATA_YAML = DATASET_ROOT / "data.yaml"
+
+CLEAN_ROOT = Path("/content/Traffic-Density-Prediction-9-cleaned")
+CLEAN_YAML = CLEAN_ROOT / "data.yaml"
+
+DRIVE_ROOT = Path("/content/drive/MyDrive/2026/comento")
+RUNS_ROOT = DRIVE_ROOT / "runs"
+RESULTS_ROOT = DRIVE_ROOT / "experiment_results"
+
+RUNS_ROOT.mkdir(parents=True, exist_ok=True)
+RESULTS_ROOT.mkdir(parents=True, exist_ok=True)
+
+# %% [Code cell 6]
+# 실험1 조건 고정
+BASE_CONFIG = {
+    "epochs": 20,
+    "imgsz": 640,
+    "batch": 16,
+    "seed": 42,
+    "device": 0,
+    "workers": 2,
+    "cache": False,
+}
+
+PREDICTION_CONF = 0.25
+PREDICTION_IOU = 0.7
+EVALUATION_IMGSZ = 640
+SEED = 42
+
+# %% [Code cell 7]
+model_exp1 = YOLO("yolov8n.pt")
+
+experiment_name = "exp1_yolov8n_baseline"
+
+start_time = time.perf_counter()
+
+train_results_exp1 = model_exp1.train(
+    data=str(DATA_YAML),
+    epochs=BASE_CONFIG["epochs"],
+    imgsz=BASE_CONFIG["imgsz"],
+    batch=BASE_CONFIG["batch"],
+    seed=BASE_CONFIG["seed"],
+    device=BASE_CONFIG["device"],
+    workers=BASE_CONFIG["workers"],
+    cache=BASE_CONFIG["cache"],
+    project=str(RUNS_ROOT),
+    name=experiment_name,
+    exist_ok=False,
+    plots=True,
+    verbose=True,
+)
+
+training_time_seconds = time.perf_counter() - start_time
+
+print(f"학습 시간: {training_time_seconds:.2f}초")
+print(f"학습 시간: {training_time_seconds / 60:.2f}분")
+
+# %% [Code cell 8]
+# best.pt로 검증 수행
+# 실험 1
+best_path_exp1 = (
+    RUNS_ROOT
+    / experiment_name
+    / "weights"
+    / "best.pt"
+)
+best_model_exp1 = YOLO(str(best_path_exp1))
+
+metrics_exp1 = best_model_exp1.val(
+    data=str(DATA_YAML),
+    split="val",
+    imgsz=640,
+    batch=16,
+    device=0,
+    plots=True,
+    project=str(RUNS_ROOT),
+    name="exp1_yolov8n_baseline_val",
+)
+
+# %% [Code cell 9]
+# 평가값 추출
+precision = float(metrics_exp1.box.mp)
+recall = float(metrics_exp1.box.mr)
+map50 = float(metrics_exp1.box.map50)
+map50_95 = float(metrics_exp1.box.map)
+
+print(f"Precision: {precision:.4f}")
+print(f"Recall: {recall:.4f}")
+print(f"mAP50: {map50:.4f}")
+print(f"mAP50-95: {map50_95:.4f}")
+
+# %% [Code cell 10]
+print(metrics_exp1.results_dict)
+
+# print(type(metrics_exp1))
+# print(dir(metrics_exp1))
+
+# %% [Code cell 11]
+# 클래스별 AP 추출
+class_names = best_model_exp1.names
+
+per_class_map50_95 = metrics_exp1.box.maps
+
+class_ap_exp1 = pd.DataFrame({
+    "class_id": range(len(per_class_map50_95)),
+    "class_name": [
+        class_names[class_id]
+        for class_id in range(len(per_class_map50_95))
+    ],
+    "mAP50-95": per_class_map50_95,
+})
+
+display(class_ap_exp1)
+
+class_ap_path = RESULTS_ROOT / "exp1_class_ap.csv"
+
+class_ap_exp1.to_csv(
+    class_ap_path,
+    index=False,
+    encoding="utf-8-sig",
+)
+
+print("저장 완료:", class_ap_path)
+
+# %% [Code cell 12]
+# 모델 크기 계산
+model_size_mb = best_path_exp1.stat().st_size / (1024 ** 2)
+
+print(f"모델 크기: {model_size_mb:.2f} MB")
+
+# 모델 파라미터 수 계산
+parameter_count = sum(
+    parameter.numel()
+    for parameter in best_model_exp1.model.parameters()
+)
+
+print(f"파라미터 수: {parameter_count:,}")
+
+# %% [Code cell 13]
+# 실험1 결과를 csv로 저장
+
+experiment_summary_exp1 = pd.DataFrame([
+    {
+        "experiment": "exp1",
+        "description": "YOLOv8n baseline, original split",
+        "model": "yolov8n",
+        "epochs": 20,
+        "imgsz": 640,
+        "batch": 16,
+        "precision": precision,
+        "recall": recall,
+        "mAP50": map50,
+        "mAP50-95": map50_95,
+        "training_time_sec": training_time_seconds,
+        "training_time_min": training_time_seconds / 60,
+        "model_size_mb": model_size_mb,
+        "parameter_count": parameter_count,
+        "data_leakage_handled": False,
+        "augmentation_setting": "default",
+        "seed": 42,
+    }
+])
+
+summary_path_exp1 = RESULTS_ROOT / "exp1_summary.csv"
+
+experiment_summary_exp1.to_csv(
+    summary_path_exp1,
+    index=False,
+    encoding="utf-8-sig",
+)
+
+display(experiment_summary_exp1)
+
+# %% [Code cell 14]
+# 학습 곡선 확인
+results_csv_exp1 = (
+    RUNS_ROOT
+    / experiment_name
+    / "results.csv"
+)
+
+training_history_exp1 = pd.read_csv(results_csv_exp1)
+
+print(training_history_exp1.columns.tolist())
+display(training_history_exp1.tail())
+
+# %% [Code cell 15]
+# validation 예측 결과 저장
+predictions_exp1 = best_model_exp1.predict(
+    source=str(DATASET_ROOT / "valid" / "images"),
+    imgsz=640,
+    conf=0.25,
+    iou=0.7,
+    save=True,
+    save_txt=True,
+    save_conf=True,
+    project=str(RUNS_ROOT),
+    name="exp1_val_predictions",
+    stream=True
+)
+
+# %% [Code cell 16]
+import re
+import hashlib
+import shutil
+import yaml
+
+from sklearn.model_selection import GroupShuffleSplit
+from collections import Counter
+
+# %% [Code cell 17]
+CLEAN_ROOT = Path("/content/Traffic-Density-Prediction-9-cleaned")
+
+def parse_source_info(filename: str):
+    """
+    Roboflow 이미지 파일명에서 원본 그룹 ID와 프레임 번호를 추출한다.
+
+    반환:
+        source_id: 동일 영상 또는 동일 원본 이미지 그룹 ID
+        frame_number: 영상 프레임 번호. 일반 이미지면 None
+    """
+    stem = Path(filename).stem
+
+    # 예: xxx.rf.abcdef 제거
+    stem = re.sub(r"\.rf\.[a-fA-F0-9]+$", "", stem)
+
+    # 예: 1-10-1-20_mp4-0331_jpg
+    match = re.match(r"(.+_mp4)-(\d+)_jpg$", stem)
+
+    if match:
+        source_id = match.group(1)
+        frame_number = int(match.group(2))
+        return source_id, frame_number
+
+    # 일반 이미지의 경우 Roboflow 해시를 제거한 이름을 그룹 ID로 사용
+    return stem, None
+
+# %% [Code cell 18]
+# 전체 이미지 메타데이터 생성
+image_extensions = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
+
+records = []
+
+for split in ["train", "valid", "test"]:
+    image_dir = DATASET_ROOT / split / "images"
+    label_dir = DATASET_ROOT / split / "labels"
+
+    for image_path in image_dir.iterdir():
+        if image_path.suffix.lower() not in image_extensions:
+            continue
+
+        source_id, frame_number = parse_source_info(image_path.name)
+        label_path = label_dir / f"{image_path.stem}.txt"
+
+        records.append({
+            "original_split": split,
+            "image_path": str(image_path),
+            "label_path": str(label_path),
+            "filename": image_path.name,
+            "source_id": source_id,
+            "frame_number": frame_number,
+            "has_label": label_path.exists(),
+        })
+
+metadata = pd.DataFrame(records)
+
+print("전체 이미지 수:", len(metadata))
+print("원본 그룹 수:", metadata["source_id"].nunique())
+
+display(metadata.head())
+
+# %% [Code cell 19]
+# 같은 source가 여러 split에 있는지 확인
+
+source_split_count = (
+    metadata.groupby("source_id")["original_split"]
+    .nunique()
+    .sort_values(ascending=False)
+)
+
+overlapping_source_ids = source_split_count[
+    source_split_count > 1
+].index.tolist()
+
+print(
+    "여러 split에 포함된 원본 그룹 수:",
+    len(overlapping_source_ids),
+)
+
+# %% [Code cell 20]
+# 그룹 단위로 새 train/val 분할
+groups_df = (
+    metadata[["source_id"]]
+    .drop_duplicates()
+    .reset_index(drop=True)
+)
+
+source_ids = groups_df["source_id"].to_numpy()
+
+# %% [Code cell 21]
+splitter_train = GroupShuffleSplit(
+    n_splits=1,
+    train_size=0.70,
+    random_state=SEED,
+)
+
+train_idx, temp_idx = next(
+    splitter_train.split(
+        X=source_ids,
+        groups=source_ids,
+    )
+)
+
+train_sources = set(source_ids[train_idx])
+temp_sources = source_ids[temp_idx]
+
+splitter_temp = GroupShuffleSplit(
+    n_splits=1,
+    train_size=2 / 3,
+    random_state=SEED,
+)
+
+valid_idx, test_idx = next(
+    splitter_temp.split(
+        X=temp_sources,
+        groups=temp_sources,
+    )
+)
+
+valid_sources = set(temp_sources[valid_idx])
+test_sources = set(temp_sources[test_idx])
+
+# %% [Code cell 22]
+assert train_sources.isdisjoint(valid_sources)
+assert train_sources.isdisjoint(test_sources)
+assert valid_sources.isdisjoint(test_sources)
+
+print("source 단위 split 중복 없음")
+
+# %% [Code cell 23]
+# 새 split을 부여
+def assign_clean_split(source_id):
+    if source_id in train_sources:
+        return "train"
+    if source_id in valid_sources:
+        return "valid"
+    if source_id in test_sources:
+        return "test"
+
+    raise ValueError(f"할당되지 않은 source_id: {source_id}")
+
+
+metadata["clean_split"] = metadata["source_id"].apply(
+    assign_clean_split
+)
+
+print(metadata["clean_split"].value_counts())
+print(
+    metadata["clean_split"]
+    .value_counts(normalize=True)
+    .round(4)
+)
+
+# %% [Code cell 24]
+duplicate_name_groups = (
+    metadata.groupby("source_id")["image_path"]
+    .count()
+    .sort_values(ascending=False)
+)
+
+display(duplicate_name_groups.head(20))
+
+# %% [Code cell 25]
+# 완전 중복 제거
+
+def calculate_md5(file_path: str) -> str:
+    hasher = hashlib.md5()
+
+    with open(file_path, "rb") as file:
+        for chunk in iter(lambda: file.read(8192), b""):
+            hasher.update(chunk)
+
+    return hasher.hexdigest()
+
+
+metadata["md5"] = metadata["image_path"].apply(calculate_md5)
+
+# %% [Code cell 26]
+before_count = len(metadata)
+
+clean_metadata = (
+    metadata
+    .sort_values(
+        ["clean_split", "source_id", "filename"]
+    )
+    .drop_duplicates(
+        subset=["md5"],
+        keep="first",
+    )
+    .reset_index(drop=True)
+)
+
+removed_duplicates = before_count - len(clean_metadata)
+
+print("완전 중복 제거 수:", removed_duplicates)
+print("정제 후 이미지 수:", len(clean_metadata))
+
+# %% [Code cell 27]
+# 클래스 분포를 고려한 보완
+class_names = [
+    "Bicycle",
+    "E-bike",
+    "Jeepney",
+    "Motorcycle",
+    "Pedestrian",
+    "Tricycle",
+    "Truck",
+    "Vehicle",
+]
+
+
+def count_labels(dataframe, split_name):
+    class_counter = Counter()
+
+    split_df = dataframe[
+        dataframe["clean_split"] == split_name
+    ]
+
+    for label_path in split_df["label_path"]:
+        path = Path(label_path)
+
+        if not path.exists():
+            continue
+
+        for line in path.read_text(
+            encoding="utf-8"
+        ).strip().splitlines():
+
+            values = line.split()
+
+            if len(values) == 5:
+                class_id = int(float(values[0]))
+                class_counter[class_id] += 1
+
+    return class_counter
+
+# %% [Code cell 28]
+clean_split_counts = {}
+
+for split in ["train", "valid", "test"]:
+    clean_split_counts[split] = count_labels(
+        clean_metadata,
+        split,
+    )
+
+distribution_df = pd.DataFrame({
+    split: [
+        clean_split_counts[split].get(class_id, 0)
+        for class_id in range(len(class_names))
+    ]
+    for split in ["train", "valid", "test"]
+})
+
+distribution_df.insert(
+    0,
+    "class_name",
+    class_names,
+)
+
+display(distribution_df)
+
+# %% [Code cell 29]
+for split in ["train", "valid", "test"]:
+    (CLEAN_ROOT / split / "images").mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+    (CLEAN_ROOT / split / "labels").mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+for _, row in clean_metadata.iterrows():
+    split = row["clean_split"]
+
+    source_image = Path(row["image_path"])
+    source_label = Path(row["label_path"])
+
+    target_image = (
+        CLEAN_ROOT
+        / split
+        / "images"
+        / source_image.name
+    )
+
+    target_label = (
+        CLEAN_ROOT
+        / split
+        / "labels"
+        / f"{source_image.stem}.txt"
+    )
+
+    shutil.copy2(source_image, target_image)
+
+    if source_label.exists():
+        shutil.copy2(source_label, target_label)
+
+print("cleaned dataset 생성 완료")
+
+# %% [Code cell 30]
+# cleaned data.yaml 생성
+clean_yaml = {
+    "path": str(CLEAN_ROOT),
+    "train": "train/images",
+    "val": "valid/images",
+    "test": "test/images",
+    "nc": 8,
+    "names": class_names,
+}
+
+CLEAN_YAML = CLEAN_ROOT / "data.yaml"
+
+with open(
+    CLEAN_YAML,
+    "w",
+    encoding="utf-8",
+) as file:
+    yaml.safe_dump(
+        clean_yaml,
+        file,
+        sort_keys=False,
+        allow_unicode=True,
+    )
+
+print(CLEAN_YAML.read_text(encoding="utf-8"))
+
+# %% [Code cell 31]
+# 최종 누수 검사
+
+clean_source_split_count = (
+    clean_metadata.groupby("source_id")["clean_split"]
+    .nunique()
+)
+
+print(
+    "여러 split에 존재하는 source:",
+    int((clean_source_split_count > 1).sum()),
+)
+
+md5_split_count = (
+    clean_metadata.groupby("md5")["clean_split"]
+    .nunique()
+)
+
+print(
+    "split 간 완전 중복:",
+    int((md5_split_count > 1).sum()),
+)
+
+for split in ["train", "valid", "test"]:
+    image_count = len(
+        list((CLEAN_ROOT / split / "images").glob("*"))
+    )
+
+    label_count = len(
+        list((CLEAN_ROOT / split / "labels").glob("*.txt"))
+    )
+
+    print(
+        f"{split}: "
+        f"images={image_count}, "
+        f"labels={label_count}"
+    )
+
+# %% [Code cell 32]
+experiment_name_exp2 = "exp2_yolov8n_clean_split"
+
+model_exp2 = YOLO("yolov8n.pt")
+
+start_time = time.perf_counter()
+
+train_results_exp2 = model_exp2.train(
+    data=str(CLEAN_YAML),
+    epochs=20,
+    imgsz=640,
+    batch=16,
+    seed=42,
+    device=0,
+    workers=2,
+    cache=False,
+    project=str(RUNS_ROOT),
+    name=experiment_name_exp2,
+    exist_ok=False,
+    plots=True,
+    verbose=True,
+)
+
+training_time_seconds_exp2 = (
+    time.perf_counter() - start_time
+)
+
+print(
+    f"실험 2 학습 시간: "
+    f"{training_time_seconds_exp2 / 60:.2f}분"
+)
+
+# %% [Code cell 33]
+# 실험 2
+best_path_exp2 = (
+    RUNS_ROOT
+    / experiment_name_exp2
+    / "weights"
+    / "best.pt"
+)
+best_model_exp2 = YOLO(str(best_path_exp2))
+
+metrics_exp2 = best_model_exp2.val(
+    data=str(CLEAN_YAML),
+    split="val",
+    imgsz=640,
+    batch=16,
+    device=0,
+    plots=True,
+    project=str(RUNS_ROOT),
+    name="exp2_yolov8n_clean_split_val",
+)
+
+# %% [Code cell 34]
+precision_exp2 = float(metrics_exp2.box.mp)
+recall_exp2 = float(metrics_exp2.box.mr)
+map50_exp2 = float(metrics_exp2.box.map50)
+map50_95_exp2 = float(metrics_exp2.box.map)
+
+print(f"Precision: {precision_exp2:.4f}")
+print(f"Recall: {recall_exp2:.4f}")
+print(f"mAP50: {map50_exp2:.4f}")
+print(f"mAP50-95: {map50_95_exp2:.4f}")
+
+class_names_exp2 = best_model_exp2.names
+per_class_map_exp2 = metrics_exp2.box.maps
+
+class_ap_exp2 = pd.DataFrame({
+    "class_id": range(len(per_class_map_exp2)),
+    "class_name": [
+        class_names_exp2[class_id]
+        for class_id in range(len(per_class_map_exp2))
+    ],
+    "mAP50-95": per_class_map_exp2,
+})
+
+display(class_ap_exp2)
+
+class_ap_path_exp2 = (
+    RESULTS_ROOT / "exp2_class_ap.csv"
+)
+
+class_ap_exp2.to_csv(
+    class_ap_path_exp2,
+    index=False,
+    encoding="utf-8-sig",
+)
+
+print("저장 완료:", class_ap_path_exp2)
+
+model_size_mb_exp2 = (
+    best_path_exp2.stat().st_size
+    / (1024 ** 2)
+)
+
+parameter_count_exp2 = sum(
+    parameter.numel()
+    for parameter in best_model_exp2.model.parameters()
+)
+
+print(
+    f"학습 시간: "
+    f"{training_time_seconds_exp2 / 60:.2f}분"
+)
+print(f"모델 크기: {model_size_mb_exp2:.2f} MB")
+print(f"파라미터 수: {parameter_count_exp2:,}")
+
+experiment_summary_exp2 = pd.DataFrame([
+    {
+        "experiment": "exp2",
+        "description": (
+            "YOLOv8n baseline, "
+            "group-aware cleaned split"
+        ),
+        "model": "yolov8n",
+        "epochs": 20,
+        "imgsz": 640,
+        "batch": 16,
+        "precision": precision_exp2,
+        "recall": recall_exp2,
+        "mAP50": map50_exp2,
+        "mAP50-95": map50_95_exp2,
+        "training_time_sec": training_time_seconds_exp2,
+        "training_time_min": (
+            training_time_seconds_exp2 / 60
+        ),
+        "model_size_mb": model_size_mb_exp2,
+        "parameter_count": parameter_count_exp2,
+        "data_leakage_handled": True,
+        "augmentation_setting": "default",
+        "seed": 42,
+    }
+])
+
+summary_path_exp2 = (
+    RESULTS_ROOT / "exp2_summary.csv"
+)
+
+experiment_summary_exp2.to_csv(
+    summary_path_exp2,
+    index=False,
+    encoding="utf-8-sig",
+)
+
+display(experiment_summary_exp2)
+
+# %% [Code cell 35]
+predictions_exp2 = best_model_exp2.predict(
+    source=str(
+        CLEAN_ROOT
+        / "valid"
+        / "images"
+    ),
+    imgsz=EVALUATION_IMGSZ,
+    conf=PREDICTION_CONF,
+    iou=PREDICTION_IOU,
+    device=0,
+    save=True,
+    save_txt=True,
+    save_conf=True,
+    project=str(RUNS_ROOT),
+    name="exp2_val_predictions",
+    exist_ok=False,
+)
+
+# %% [Code cell 36]
+experiment_name_exp3 = "exp3_yolov8n_50epochs"
+
+model_exp3 = YOLO("yolov8n.pt")
+
+start_time = time.perf_counter()
+
+train_results_exp3 = model_exp3.train(
+    data=str(CLEAN_YAML),
+    epochs=50,
+    imgsz=640,
+    batch=16,
+    seed=42,
+    device=0,
+    workers=2,
+    cache=False,
+
+    # colab 제한 방지_체크포인트 저장
+
+    save=True,
+    save_period=5,
+
+    project=str(RUNS_ROOT),
+    name=experiment_name_exp3,
+    exist_ok=False,
+    plots=True,
+    verbose=True,
+)
+
+training_time_seconds_exp3 = (
+    time.perf_counter() - start_time
+)
+
+print(
+    f"실험 3 학습 시간: "
+    f"{training_time_seconds_exp3 / 60:.2f}분"
+)
+
+# %% [Code cell 37]
+# 재실행 변수 정의
+experiment_name_exp3 = "exp3_yolov8n_50epochs"
+training_time_seconds_exp3 = 1.853*60
+
+# %% [Code cell 38]
+best_path_exp3 = (
+    RUNS_ROOT
+    / experiment_name_exp3
+    / "weights"
+    / "best.pt"
+)
+
+assert best_path_exp3.exists(), \
+    f"best.pt가 없습니다: {best_path_exp3}"
+
+best_model_exp3 = YOLO(str(best_path_exp3))
+
+metrics_exp3 = best_model_exp3.val(
+    data=str(CLEAN_YAML),
+    split="val",
+    imgsz=640,
+    batch=16,
+    device=0,
+    plots=True,
+    project=str(RUNS_ROOT),
+    name="exp3_yolov8n_50epochs_val",
+)
+
+# %% [Code cell 39]
+precision_exp3 = float(metrics_exp3.box.mp)
+recall_exp3 = float(metrics_exp3.box.mr)
+map50_exp3 = float(metrics_exp3.box.map50)
+map50_95_exp3 = float(metrics_exp3.box.map)
+
+print(f"Precision: {precision_exp3:.4f}")
+print(f"Recall: {recall_exp3:.4f}")
+print(f"mAP50: {map50_exp3:.4f}")
+print(f"mAP50-95: {map50_95_exp3:.4f}")
+
+class_names_exp3 = best_model_exp3.names
+per_class_map_exp3 = metrics_exp3.box.maps
+
+class_ap_exp3 = pd.DataFrame({
+    "class_id": range(len(per_class_map_exp3)),
+    "class_name": [
+        class_names_exp3[class_id]
+        for class_id in range(len(per_class_map_exp3))
+    ],
+    "mAP50-95": per_class_map_exp3,
+})
+
+display(class_ap_exp3)
+
+class_ap_path_exp3 = RESULTS_ROOT / "exp3_class_ap.csv"
+
+class_ap_exp3.to_csv(
+    class_ap_path_exp3,
+    index=False,
+    encoding="utf-8-sig",
+)
+
+print("저장 완료:", class_ap_path_exp3)
+
+model_size_mb_exp3 = (
+    best_path_exp3.stat().st_size
+    / (1024 ** 2)
+)
+
+parameter_count_exp3 = sum(
+    parameter.numel()
+    for parameter in best_model_exp3.model.parameters()
+)
+
+print(
+    f"학습 시간: "
+    f"{training_time_seconds_exp3 / 60:.2f}분"
+)
+print(f"모델 크기: {model_size_mb_exp3:.2f} MB")
+print(f"파라미터 수: {parameter_count_exp3:,}")
+
+experiment_summary_exp3 = pd.DataFrame([
+    {
+        "experiment": "exp3",
+        "description": (
+            "YOLOv8n, cleaned split, "
+            "epochs increased to 50"
+        ),
+        "model": "yolov8n",
+        "epochs": 50,
+        "imgsz": 640,
+        "batch": 16,
+        "precision": precision_exp3,
+        "recall": recall_exp3,
+        "mAP50": map50_exp3,
+        "mAP50-95": map50_95_exp3,
+        "training_time_sec": training_time_seconds_exp3,
+        "training_time_min": (
+            training_time_seconds_exp3 / 60
+        ),
+        "model_size_mb": model_size_mb_exp3,
+        "parameter_count": parameter_count_exp3,
+        "data_leakage_handled": True,
+        "augmentation_setting": "default",
+        "seed": 42,
+    }
+])
+
+summary_path_exp3 = RESULTS_ROOT / "exp3_summary.csv"
+
+experiment_summary_exp3.to_csv(
+    summary_path_exp3,
+    index=False,
+    encoding="utf-8-sig",
+)
+
+display(experiment_summary_exp3)
+
+predictions_exp3 = best_model_exp3.predict(
+    source=str(CLEAN_ROOT / "valid" / "images"),
+    imgsz=640,
+    conf=0.25,
+    iou=0.7,
+    device=0,
+    save=True,
+    save_txt=True,
+    save_conf=True,
+    project=str(RUNS_ROOT),
+    name="exp3_val_predictions",
+    exist_ok=False,
+)
+
+# %% [Code cell 40]
+history_exp3 = pd.read_csv("/content/drive/MyDrive/2026/comento/runs/exp3_yolov8n_50epochs/results.csv")
+history_exp3.columns = history_exp3.columns.str.strip()
+
+map_column = "metrics/mAP50-95(B)"
+
+best_row_exp3 = history_exp3.loc[
+    history_exp3[map_column].idxmax()
+]
+
+print("최고 epoch:", int(best_row_exp3["epoch"]) + 1)
+print(
+    "최고 mAP50-95:",
+    best_row_exp3[map_column],
+)
+
+# %% [Code cell 41]
+# 실험4 설정
+AUGMENTATION_CONFIG_EXP4 = {
+    # 색상·조명
+    "hsv_h": 0.01,
+    "hsv_s": 0.50,
+    "hsv_v": 0.50,
+
+    # 기하 변환
+    "degrees": 3.0,
+    "translate": 0.10,
+    "scale": 0.50,
+    "shear": 0.50,
+    "perspective": 0.0002,
+
+    # 반전
+    "flipud": 0.0,
+    "fliplr": 0.5,
+
+    # 복합 증강
+    "mosaic": 1.0,
+    "mixup": 0.10,
+    "close_mosaic": 5,
+}
+
+# %% [Code cell 42]
+experiment_name_exp4 = (
+    "exp4_yolov8n_augmentation"
+)
+
+model_exp4 = YOLO("yolov8n.pt")
+
+start_time_exp4 = time.perf_counter()
+
+train_results_exp4 = model_exp4.train(
+    data=str(CLEAN_YAML),
+
+    # 증강 외 조건은 실험1과 동일
+    epochs=BASE_CONFIG["epochs"],
+    imgsz=BASE_CONFIG["imgsz"],
+    batch=BASE_CONFIG["batch"],
+    seed=BASE_CONFIG["seed"],
+    device=BASE_CONFIG["device"],
+    workers=BASE_CONFIG["workers"],
+    cache=BASE_CONFIG["cache"],
+
+    # 색상·조명 증강
+    hsv_h=AUGMENTATION_CONFIG_EXP4["hsv_h"],
+    hsv_s=AUGMENTATION_CONFIG_EXP4["hsv_s"],
+    hsv_v=AUGMENTATION_CONFIG_EXP4["hsv_v"],
+
+    # 기하학적 증강
+    degrees=AUGMENTATION_CONFIG_EXP4["degrees"],
+    translate=AUGMENTATION_CONFIG_EXP4["translate"],
+    scale=AUGMENTATION_CONFIG_EXP4["scale"],
+    shear=AUGMENTATION_CONFIG_EXP4["shear"],
+    perspective=AUGMENTATION_CONFIG_EXP4["perspective"],
+
+    # 반전
+    flipud=AUGMENTATION_CONFIG_EXP4["flipud"],
+    fliplr=AUGMENTATION_CONFIG_EXP4["fliplr"],
+
+    # 복합 증강
+    mosaic=AUGMENTATION_CONFIG_EXP4["mosaic"],
+    mixup=AUGMENTATION_CONFIG_EXP4["mixup"],
+    close_mosaic=AUGMENTATION_CONFIG_EXP4[
+        "close_mosaic"
+    ],
+
+    # 체크포인트
+    save=True,
+    save_period=5,
+
+    project=str(RUNS_ROOT),
+    name=experiment_name_exp4,
+    exist_ok=False,
+    plots=True,
+    verbose=True,
+)
+
+training_time_seconds_exp4 = (
+    time.perf_counter() - start_time_exp4
+)
+
+print(
+    f"실험 4 학습 시간: "
+    f"{training_time_seconds_exp4 / 60:.2f}분"
+)
+
+# %% [Code cell 43]
+# 런타임 오류로 인한 재실행
+DRIVE_ROOT = Path("/content/drive/MyDrive/2026/comento")
+RUNS_ROOT = DRIVE_ROOT / "runs"
+
+experiment_name_exp4 = "exp4_yolov8n_augmentation"
+
+run_dir_exp4 = RUNS_ROOT / experiment_name_exp4
+last_path_exp4 = run_dir_exp4 / "weights" / "last.pt"
+best_path_exp4 = run_dir_exp4 / "weights" / "best.pt"
+
+CLEAN_ROOT = Path("/content/Traffic-Density-Prediction-9-cleaned")
+CLEAN_YAML = CLEAN_ROOT / "data.yaml"
+
+print("cleaned dataset:", CLEAN_ROOT.exists())
+print("data.yaml:", CLEAN_YAML.exists())
+
+import torch
+
+checkpoint = torch.load(
+    last_path_exp4,
+    map_location="cpu",
+    weights_only=False,
+)
+
+print("저장된 epoch:", checkpoint.get("epoch"))
+print("저장된 train args:")
+print(checkpoint.get("train_args"))
+
+assert last_path_exp4.exists(), (
+    f"재개할 last.pt가 없습니다: {last_path_exp4}"
+)
+
+resume_model_exp4 = YOLO(str(last_path_exp4))
+
+resume_start_time_exp4 = time.perf_counter()
+
+resume_results_exp4 = resume_model_exp4.train(
+    resume=True
+)
+
+resume_time_seconds_exp4 = (
+    time.perf_counter() - resume_start_time_exp4
+)
+
+print(
+    f"재개 구간 실행 시간: "
+    f"{resume_time_seconds_exp4 / 60:.2f}분"
+)
+
+# %% [Code cell 44]
+# 실험 4
+best_path_exp4 = (
+    RUNS_ROOT
+    / experiment_name_exp4
+    / "weights"
+    / "best.pt"
+)
+best_model_exp4 = YOLO(str(best_path_exp4))
+
+metrics_exp4 = best_model_exp4.val(
+    data=str(CLEAN_YAML),
+    split="val",
+    imgsz=640,
+    batch=16,
+    device=0,
+    plots=True,
+    project=str(RUNS_ROOT),
+    name="exp4_yolov8n_augmentation_val",
+)
+
+# %% [Code cell 45]
+precision_exp4 = float(metrics_exp4.box.mp)
+recall_exp4 = float(metrics_exp4.box.mr)
+map50_exp4 = float(metrics_exp4.box.map50)
+map50_95_exp4 = float(metrics_exp4.box.map)
+
+print(f"Precision: {precision_exp4:.4f}")
+print(f"Recall: {recall_exp4:.4f}")
+print(f"mAP50: {map50_exp4:.4f}")
+print(f"mAP50-95: {map50_95_exp4:.4f}")
+
+class_names_exp4 = best_model_exp4.names
+per_class_map_exp4 = metrics_exp4.box.maps
+
+class_ap_exp4 = pd.DataFrame({
+    "class_id": range(len(per_class_map_exp4)),
+    "class_name": [
+        class_names_exp4[class_id]
+        for class_id in range(len(per_class_map_exp4))
+    ],
+    "mAP50-95": per_class_map_exp4,
+})
+
+display(class_ap_exp4)
+
+class_ap_path_exp4 = (
+    RESULTS_ROOT / "exp4_class_ap.csv"
+)
+
+class_ap_exp4.to_csv(
+    class_ap_path_exp4,
+    index=False,
+    encoding="utf-8-sig",
+)
+
+print("저장 완료:", class_ap_path_exp4)
+
+model_size_mb_exp4 = (
+    best_path_exp4.stat().st_size
+    / (1024 ** 2)
+)
+
+parameter_count_exp4 = sum(
+    parameter.numel()
+    for parameter in best_model_exp4.model.parameters()
+)
+
+training_time_seconds_exp4 = resume_time_seconds_exp4
+print(
+    f"학습 시간: "
+    f"{training_time_seconds_exp4 / 60:.2f}분"
+)
+print(f"모델 크기: {model_size_mb_exp4:.2f} MB")
+print(f"파라미터 수: {parameter_count_exp4:,}")
+
+experiment_summary_exp4 = pd.DataFrame([
+    {
+        "experiment": "exp4",
+        "description": (
+            "YOLOv8n baseline, "
+            "group-aware cleaned split"
+        ),
+        "model": "yolov8n",
+        "epochs": 20,
+        "imgsz": 640,
+        "batch": 16,
+        "precision": precision_exp4,
+        "recall": recall_exp4,
+        "mAP50": map50_exp4,
+        "mAP50-95": map50_95_exp4,
+        "training_time_sec": training_time_seconds_exp4,
+        "training_time_min": (
+            training_time_seconds_exp4 / 60
+        ),
+        "model_size_mb": model_size_mb_exp4,
+        "parameter_count": parameter_count_exp4,
+        "data_leakage_handled": True,
+        "augmentation_setting": "default",
+        "seed": 42,
+    }
+])
+
+summary_path_exp4 = (
+    RESULTS_ROOT / "exp4_summary.csv"
+)
+
+experiment_summary_exp4.to_csv(
+    summary_path_exp4,
+    index=False,
+    encoding="utf-8-sig",
+)
+
+display(experiment_summary_exp4)
+
+# %% [Code cell 46]
+predictions_exp4 = best_model_exp4.predict(
+    source=str(
+        CLEAN_ROOT
+        / "valid"
+        / "images"
+    ),
+    imgsz=EVALUATION_IMGSZ,
+    conf=PREDICTION_CONF,
+    iou=PREDICTION_IOU,
+    device=0,
+    save=True,
+    save_txt=True,
+    save_conf=True,
+    project=str(RUNS_ROOT),
+    name="exp4_val_predictions",
+    exist_ok=False,
+)
+
+# %% [Code cell 47]
+experiment_name_exp5 = "exp5_yolov8s_baseline"
+
+model_exp5 = YOLO("yolov8s.pt")
+
+start_time_exp5 = time.perf_counter()
+
+train_results_exp5 = model_exp5.train(
+    data=str(CLEAN_YAML),
+
+    # 실험 2와 동일
+    epochs=20,
+    imgsz=640,
+    batch=16,
+    seed=42,
+    device=0,
+    workers=2,
+    cache=False,
+
+    # 체크포인트
+    save=True,
+    save_period=5,
+
+    project=str(RUNS_ROOT),
+    name=experiment_name_exp5,
+    exist_ok=False,
+    plots=True,
+    verbose=True,
+)
+
+training_time_seconds_exp5 = (
+    time.perf_counter() - start_time_exp5
+)
+
+print(
+    f"실험 5 학습 시간: "
+    f"{training_time_seconds_exp5 / 60:.2f}분"
+)
+
+# %% [Code cell 48]
+best_path_exp5 = (
+    RUNS_ROOT
+    / experiment_name_exp5
+    / "weights"
+    / "best.pt"
+)
+
+assert best_path_exp5.exists(), (
+    f"best.pt가 없습니다: {best_path_exp5}"
+)
+
+best_model_exp5 = YOLO(str(best_path_exp5))
+
+print(best_model_exp5.names)
+
+# %% [Code cell 49]
+metrics_exp5 = best_model_exp5.val(
+    data=str(CLEAN_YAML),
+    split="val",
+    imgsz=640,
+    batch=16,
+    device=0,
+    plots=True,
+    project=str(RUNS_ROOT),
+    name="exp5_yolov8s_baseline_val",
+    exist_ok=True,
+)
+
+precision_exp5 = float(metrics_exp5.box.mp)
+recall_exp5 = float(metrics_exp5.box.mr)
+map50_exp5 = float(metrics_exp5.box.map50)
+map50_95_exp5 = float(metrics_exp5.box.map)
+
+print(f"Precision: {precision_exp5:.4f}")
+print(f"Recall: {recall_exp5:.4f}")
+print(f"mAP50: {map50_exp5:.4f}")
+print(f"mAP50-95: {map50_95_exp5:.4f}")
+
+import pandas as pd
+
+class_names_exp5 = best_model_exp5.names
+per_class_map_exp5 = metrics_exp5.box.maps
+
+class_ap_exp5 = pd.DataFrame({
+    "class_id": range(len(per_class_map_exp5)),
+    "class_name": [
+        class_names_exp5[class_id]
+        for class_id in range(len(per_class_map_exp5))
+    ],
+    "mAP50-95": per_class_map_exp5,
+})
+
+display(class_ap_exp5)
+
+class_ap_path_exp5 = RESULTS_ROOT / "exp5_class_ap.csv"
+
+class_ap_exp5.to_csv(
+    class_ap_path_exp5,
+    index=False,
+    encoding="utf-8-sig",
+)
+
+print("저장 완료:", class_ap_path_exp5)
+
+model_size_mb_exp5 = (
+    best_path_exp5.stat().st_size / (1024 ** 2)
+)
+
+parameter_count_exp5 = sum(
+    parameter.numel()
+    for parameter in best_model_exp5.model.parameters()
+)
+
+print(
+    f"학습 시간: "
+    f"{training_time_seconds_exp5 / 60:.2f}분"
+)
+print(f"모델 크기: {model_size_mb_exp5:.2f} MB")
+print(f"파라미터 수: {parameter_count_exp5:,}")
+
+experiment_summary_exp5 = pd.DataFrame([
+    {
+        "experiment": "exp5",
+        "description": (
+            "YOLOv8s, cleaned split, "
+            "same baseline conditions as exp2"
+        ),
+        "model": "yolov8s",
+        "epochs": 20,
+        "imgsz": 640,
+        "batch": 16,
+        "precision": precision_exp5,
+        "recall": recall_exp5,
+        "mAP50": map50_exp5,
+        "mAP50-95": map50_95_exp5,
+        "training_time_sec": (
+            training_time_seconds_exp5
+        ),
+        "training_time_min": (
+            training_time_seconds_exp5 / 60
+        ),
+        "model_size_mb": model_size_mb_exp5,
+        "parameter_count": parameter_count_exp5,
+        "data_leakage_handled": True,
+        "augmentation_setting": "default",
+        "seed": 42,
+    }
+])
+
+summary_path_exp5 = RESULTS_ROOT / "exp5_summary.csv"
+
+experiment_summary_exp5.to_csv(
+    summary_path_exp5,
+    index=False,
+    encoding="utf-8-sig",
+)
+
+display(experiment_summary_exp5)
+
+# %% [Code cell 50]
+predictions_exp5 = best_model_exp5.predict(
+    source=str(CLEAN_ROOT / "valid" / "images"),
+    imgsz=640,
+    conf=0.25,
+    iou=0.7,
+    device=0,
+    save=True,
+    save_txt=True,
+    save_conf=True,
+    project=str(RUNS_ROOT),
+    name="exp5_val_predictions",
+    exist_ok=True,
+)
