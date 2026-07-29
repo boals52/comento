@@ -228,8 +228,26 @@ Exp1은 원본 validation split을 사용했기 때문에 Exp2–Exp5와 직접�
 | Exp4       | 0.610167  | 0.641229 | 0.643051 | 0.413946 |
 | Exp5       | 0.650607  | 0.675032 | 0.684143 | 0.452981 |
 
+## 6. 추가 코드 수정 및 결과 분석
+- 예측 Bounding Box에 class confidence score 표시
+- 클래스별 인스턴스 수 분석
+- 클래스별 평균/중앙값 객체 크기 분석
+- small object 비율과 AP의 관계 분석
 
-## 6. Notes
+클래스별 인스턴스 수는 약 1,460~1,666개로 비교적 균형 있게 분포하여,
+클래스 불균형이 성능 저하의 주요 원인이라고 보기는 어려웠다.
+
+Pedestrian과 Motorcycle 클래스는 small object 비율이 각각 91.92%, 84.85%로 높았으며,
+CCTV 영상의 원거리 촬영과 주변 객체에 의한 가림으로 인해 낮은 AP를 보인 것으로 판단하였다.
+
+반면 Vehicle 클래스는 small object 비율이 57.16%로 상대적으로 낮음에도
+exp3 기준 AP가 26.15로 가장 낮았다.
+따라서 Vehicle의 낮은 성능은 객체 크기보다는 Jeepney, Truck 등 다른 차량 계열 클래스와의
+시각적 특징 중복 또는 클래스 정의의 모호성으로 인한 오분류 가능성과 관련된 것으로 추정하였다.
+
+정확한 원인 확인을 위해서는 향후 confusion matrix 및 클래스별 오탐·미탐 분석이 필요하다.
+
+## 7. Notes
 - Dataset files are not included in this repository.
 - Model weights (.pt) and training output directories are excluded.
 - A Roboflow API key is required to download the dataset.
